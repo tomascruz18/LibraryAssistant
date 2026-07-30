@@ -188,23 +188,34 @@ def plot_force_graph(
     edges: Sequence[tuple[int, int, float]],
 ) -> go.Figure:
     """Render the persisted similarity graph with a deterministic force layout."""
-    graph = ig.Graph(n=len(papers), edges=[(source, target) for source, target, _ in edges])
-    graph.es["weight"] = [weight for _, _, weight in edges]
-    if len(papers) == 0:
-        coordinates = np.empty((0, 2), dtype=np.float32)
-    elif len(papers) == 1:
-        coordinates = np.zeros((1, 2), dtype=np.float32)
-    else:
-        angles = np.linspace(0, 2 * np.pi, len(papers), endpoint=False)
-        seed = np.column_stack((np.cos(angles), np.sin(angles))).tolist()
-        coordinates = np.asarray(
-            graph.layout_fruchterman_reingold(
-                weights="weight", niter=500, seed=seed, grid="auto"
-            ),
-            dtype=np.float32,
-        )
+    coordinates = force_layout_coordinates(len(papers), edges)
     return _plot_graph(
         coordinates, papers, communities, edges, "Paper similarity graph (force layout)"
+    )
+
+
+def force_layout_coordinates(
+    paper_count: int,
+    edges: Sequence[tuple[int, int, float]],
+) -> np.ndarray:
+    """Return deterministic Fruchterman-Reingold coordinates for app reuse."""
+    if paper_count < 0:
+        raise ValueError("paper_count must not be negative.")
+    graph = ig.Graph(
+        n=paper_count, edges=[(source, target) for source, target, _ in edges]
+    )
+    graph.es["weight"] = [weight for _, _, weight in edges]
+    if paper_count == 0:
+        return np.empty((0, 2), dtype=np.float32)
+    if paper_count == 1:
+        return np.zeros((1, 2), dtype=np.float32)
+    angles = np.linspace(0, 2 * np.pi, paper_count, endpoint=False)
+    seed = np.column_stack((np.cos(angles), np.sin(angles))).tolist()
+    return np.asarray(
+        graph.layout_fruchterman_reingold(
+            weights="weight", niter=500, seed=seed, grid="auto"
+        ),
+        dtype=np.float32,
     )
 
 

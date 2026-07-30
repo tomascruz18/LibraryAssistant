@@ -32,5 +32,6 @@ pymupdf
 ocrmypdf
 
 # app
-streamlit
 pandas
+dash
+dash-bootstrap-components

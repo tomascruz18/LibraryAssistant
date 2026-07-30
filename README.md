@@ -23,7 +23,7 @@ The project combines semantic search, keyword search, graph analysis and local l
 - Detect research communities using the Leiden algorithm.
 - Visualize the literature using UMAP.
 - Query a local LLM (Ollama) about retrieved papers.
-- Planned interactive web interface using Streamlit.
+- Interactive local research map built with Dash and Plotly.
 
 ---
 
@@ -80,7 +80,7 @@ Unlike public tools, the assistant will also search personal notes, internal rep
                 Local LLM (Ollama)
                        │
                        ▼
-                  Streamlit UI
+                    Dash UI
 ```
 
 ---
@@ -117,7 +117,7 @@ Unlike public tools, the assistant will also search personal notes, internal rep
 
 - UMAP
 - Plotly
-- Streamlit (planned)
+- Dash
 
 ### Local LLM
 
@@ -161,15 +161,15 @@ python scripts/build_all.py --papers 1000
 See [End-to-end pipeline](docs/pipeline.md) for incremental, database-only, and full
 rebuild options.
 
-Start Zotero with its local API enabled, then launch the application:
+With the stored pipeline data available, launch the local application:
 
 ```bash
-streamlit run app.py
+python app.py
 ```
 
-Use **Load Zotero and build index** in the sidebar. The Streamlit prototype still builds
-an in-memory index; for persistent, incremental metadata embeddings see
-[Persistent embeddings](docs/embeddings.md).
+Open `http://127.0.0.1:8050`. The app reads the SQLite catalog and persisted
+embeddings, graph, clusters, and UMAP projection; it does not rebuild the Zotero
+pipeline during normal use.
 
 ### Test LLM metadata extraction from one PDF
 
@@ -235,7 +235,8 @@ Maximum context size is 40960. After some experiments I got this:
 ```
 LibraryAssistant/
 
-├── app.py                  # Streamlit application
+├── app.py                  # Dash application and callbacks
+├── app_data.py             # Database-backed UI state and graph figures
 ├── data.py                 # Load Zotero library
 ├── storage.py              # Persist metadata in SQLite
 ├── extraction.py           # PDF text extraction
@@ -287,7 +288,7 @@ LibraryAssistant/
 
 ### User Interface
 
-- [x] Minimal Streamlit search application
+- [x] Dash research-map MVP
 - [ ] PDF viewer
 - [ ] Open paper from Zotero
 - [ ] Search history

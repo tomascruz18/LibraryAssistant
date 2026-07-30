@@ -36,3 +36,59 @@ It should display all relevant ifnromation that is available.
 there should be a buttom to open the pdf.
 
 ![App layout](img.png)
+
+## App Roadmap
+
+The application should use the existing SQLite catalog and persisted embeddings, graph,
+clusters, labels, and projections. It should not rebuild the Zotero pipeline as part of
+normal app use.
+
+### Stage 1: Usable research-map MVP
+
+Build the core three-panel application:
+
+- main panel with a Force/UMAP switch, pan and zoom, title-only hover, and paper-node
+  selection;
+- right panel showing the selected paper's title, authors, date, abstract, cluster name,
+  and Zotero key;
+- search bar with Hybrid, Semantic, and BM25 modes; selecting a result also selects and
+  highlights its node;
+- cluster filter showing each saved cluster name with its associated colour;
+- minimal chat panel, grounded in the selected paper, selected cluster, or retrieved
+  papers from the database.
+
+Two supporting pieces are required for this stage: expose force-layout coordinates for
+the app instead of only writing them to HTML, and resolve a Zotero attachment key to a
+local PDF path or an "Open in Zotero" action.
+
+This stage is implemented in Dash. Start it from the project root with:
+
+```powershell
+python app.py
+```
+
+Then open `http://127.0.0.1:8050`. The application reads `data/library.sqlite3`;
+generate or refresh that catalog separately with `scripts\build_all.py`.
+
+### Stage 2: Interaction and usability polish
+
+- draggable horizontal chat divider and vertical information-panel divider;
+- distinct highlighting for search results, selected papers, and direct graph neighbours;
+- cluster description and paper count in the filter and information panels;
+- optional node sizing by graph degree or another centrality metric;
+- session-only chat history and a visible processing/status area.
+
+### Stage 3: Deeper research workflows
+
+- multi-select papers and compare them through the chat;
+- LLM answers with paper citations and clickable source cards;
+- manual cluster-name editing, preserving manual labels over automatic proposals;
+- metadata filters for date, author, document type, and metadata provenance;
+- embedded PDF viewer, saved collections, annotations, and search history.
+
+### Later extensions
+
+- incremental Zotero synchronization from the interface;
+- citation-network ingestion and visualization;
+- graph editing and user-defined links;
+- cross-paper comparison and automatic literature-review workflows.
