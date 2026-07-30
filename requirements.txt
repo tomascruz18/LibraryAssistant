@@ -1,0 +1,36 @@
+# Zotero
+pyzotero
+
+# Embeddings
+sentence-transformers
+torch
+transformers
+
+# Similarity
+scikit-learn
+numpy
+
+# Keyword search
+rank-bm25
+
+# Graph
+igraph
+leidenalg
+
+# UMAP
+umap-learn
+
+# Plotting
+matplotlib
+plotly
+
+# Local LLM
+ollama
+
+# PDF
+pymupdf
+ocrmypdf
+
+# app
+streamlit
+pandas
