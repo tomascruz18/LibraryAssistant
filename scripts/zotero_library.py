@@ -6,7 +6,7 @@ zot = zotero.Zotero(
     local=True
 )
 
-items = zot.top(limit=10)
+items = zot.top(limit=50)
 # we've retrieved the latest five top-level items in our library
 # we can print each item's item type and ID
 for item in items:

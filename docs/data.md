@@ -103,6 +103,21 @@ The pipeline version and model settings identify how an LLM-derived value was cr
 LLM response passed validation, while `2` or `3` means an invalid or failed response was
 retried successfully.
 `metadata_error` is set when a PDF, OCR, or LLM call fails; no fabricated value is added.
+When a document has no extractable abstract and exceeds the MVP summary limit (estimated
+24,000 tokens, approximately 40 pages), it is recorded as an error instead of attempting
+a potentially long multi-step summary.
+
+## Loading progress
+
+Pass `show_progress=True` to `load_zotero_library()` to show a terminal progress bar as
+each Zotero entry is processed. This includes time spent downloading PDFs and calling the
+LLM for records with missing metadata.
+
+```python
+from data import load_zotero_library
+
+papers = load_zotero_library(limit=20, show_progress=True)
+```
 
 ## Processing states
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Any, Sequence
 
@@ -16,9 +17,16 @@ METADATA_PIPELINE_VERSION = 1
 # Scientific PDFs contain equations and symbols that may tokenize more densely than
 # ordinary prose. Two characters per token is intentionally conservative.
 CONSERVATIVE_CHARACTERS_PER_TOKEN = 2
+# A scientific PDF page commonly contains about 500 words, or roughly 600 tokens.
+# The text estimate below deliberately uses the conservative two-characters-per-token
+# conversion already used for context budgeting.
+ESTIMATED_TOKENS_PER_PAGE = 600
+MAX_SUMMARIZATION_TOKENS = 40 * ESTIMATED_TOKENS_PER_PAGE
 METADATA_OUTPUT_TOKENS = 700
 DEFAULT_METADATA_MAX_ATTEMPTS = 3
 SUMMARY_OUTPUT_TOKENS = 400
+CLUSTER_LABEL_OUTPUT_TOKENS = 160
+CLUSTER_LABEL_PIPELINE_VERSION = 1
 PROMPT_RESERVE_TOKENS = 600
 METADATA_SCHEMA = {
     "type": "object",
@@ -32,6 +40,15 @@ METADATA_SCHEMA = {
         },
     },
     "required": ["authors", "date", "abstract", "document_type"],
+    "additionalProperties": False,
+}
+CLUSTER_LABEL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "label": {"type": "string"},
+        "description": {"type": "string"},
+    },
+    "required": ["label", "description"],
     "additionalProperties": False,
 }
 AUTHOR_FOOTNOTE_MARKERS = r"*+#$&†‡§¶‖"
@@ -58,6 +75,14 @@ class MetadataExtractionError(RuntimeError):
         self.attempts = attempts
         self.last_error = last_error
         self.raw_response = raw_response
+
+
+class DocumentTooLongForSummaryError(ValueError):
+    """Raised when an MVP summary would be too expensive for the local LLM."""
+
+
+class ClusterLabelError(RuntimeError):
+    """Raised when the local LLM cannot produce a valid cluster label."""
 
 
 def parse_metadata_response(content: str) -> dict[str, Any]:
@@ -96,6 +121,85 @@ def parse_metadata_response(content: str) -> dict[str, Any]:
         "abstract": metadata["abstract"].strip() if metadata["abstract"] else None,
         "document_type": metadata["document_type"],
     }
+
+
+def _parse_cluster_label_response(content: str) -> dict[str, str]:
+    text = content.strip()
+    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL)
+    if fenced:
+        text = fenced.group(1)
+    result = json.loads(text)
+    if not isinstance(result, dict) or set(result) != {"label", "description"}:
+        raise ValueError("Expected exactly the fields 'label' and 'description'.")
+    label = result["label"]
+    description = result["description"]
+    if not isinstance(label, str) or not isinstance(description, str):
+        raise ValueError("Cluster label fields must be strings.")
+    label = label.strip()
+    description = description.strip()
+    if not label or not description:
+        raise ValueError("Cluster label fields must not be empty.")
+    if len(label) > 100 or len(description) > 500:
+        raise ValueError("Cluster label response is longer than the MVP limits.")
+    return {"label": label, "description": description}
+
+
+def generate_cluster_label(
+    representative_papers: Sequence[dict[str, Any]],
+    *,
+    model: str = DEFAULT_MODEL,
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+    context_window_tokens: int = DEFAULT_CONTEXT_WINDOW_TOKENS,
+    max_attempts: int = DEFAULT_METADATA_MAX_ATTEMPTS,
+) -> dict[str, str]:
+    """Generate a concise cluster name from representative paper metadata."""
+    if not representative_papers:
+        raise ValueError("At least one representative paper is required.")
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be at least 1.")
+
+    paper_blocks = []
+    for index, paper in enumerate(representative_papers, start=1):
+        title = str(paper.get("title") or "Untitled").strip()
+        abstract = str(paper.get("abstract") or "").strip()[:700]
+        paper_blocks.append(f"Paper {index}\nTitle: {title}\nAbstract: {abstract}")
+    prompt = f"""Name the research theme represented by these papers from one Leiden cluster.
+
+Rules:
+- Use only the provided titles and abstracts.
+- Give a specific, concise label of 3 to 8 words. Do not include the word "cluster".
+- Write one factual sentence describing the shared theme.
+- Do not invent methods, results, or scope absent from the supplied papers.
+- Respond with JSON only, matching the requested schema.
+
+Representative papers:
+---
+{chr(10).join(paper_blocks)}
+---
+"""
+    last_error: Exception | None = None
+    for _attempt in range(max_attempts):
+        try:
+            client = ollama.Client(timeout=timeout_seconds)
+            response = client.chat(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                format=CLUSTER_LABEL_SCHEMA,
+                think=False,
+                options={
+                    "temperature": 0,
+                    "num_ctx": context_window_tokens,
+                    "num_predict": CLUSTER_LABEL_OUTPUT_TOKENS,
+                },
+            )
+            return _parse_cluster_label_response(str(response["message"]["content"]))
+        except Exception as error:
+            last_error = error
+
+    assert last_error is not None
+    raise ClusterLabelError(
+        f"Cluster labeling failed after {max_attempts} attempts: {last_error}"
+    ) from last_error
 
 
 def request_metadata_from_text(
@@ -211,6 +315,11 @@ def _summary_chunk_characters(context_window_tokens: int) -> int:
     return available_tokens * CONSERVATIVE_CHARACTERS_PER_TOKEN
 
 
+def estimate_document_tokens(document_text: str) -> int:
+    """Return a conservative token estimate without loading a model tokenizer."""
+    return math.ceil(len(document_text) / CONSERVATIVE_CHARACTERS_PER_TOKEN)
+
+
 def _split_text(text: str, maximum_characters: int) -> list[str]:
     """Split text near paragraph or sentence boundaries without exceeding the budget."""
     normalized = re.sub(r"\s+", " ", text).strip()
@@ -299,6 +408,7 @@ def summarize_document_text(
     model: str = DEFAULT_MODEL,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     context_window_tokens: int = DEFAULT_CONTEXT_WINDOW_TOKENS,
+    max_document_tokens: int = MAX_SUMMARIZATION_TOKENS,
 ) -> str:
     """Summarize a document of any length using recursive context-safe reduction.
 
@@ -306,6 +416,17 @@ def summarize_document_text(
     not fit safely in one request, they are summarized again until one final summary
     remains. This keeps every inference within the configured context window.
     """
+    if max_document_tokens < 1:
+        raise ValueError("max_document_tokens must be at least 1.")
+    estimated_tokens = estimate_document_tokens(document_text)
+    if estimated_tokens > max_document_tokens:
+        approximate_pages = max_document_tokens / ESTIMATED_TOKENS_PER_PAGE
+        raise DocumentTooLongForSummaryError(
+            "Skipped LLM summary: document is estimated at "
+            f"{estimated_tokens:,} tokens, above the MVP limit of "
+            f"{max_document_tokens:,} tokens (about {approximate_pages:g} pages)."
+        )
+
     chunk_characters = _summary_chunk_characters(context_window_tokens)
     source_chunks = _split_text(document_text, chunk_characters)
     if not source_chunks:

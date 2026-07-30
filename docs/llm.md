@@ -309,6 +309,11 @@ python scripts\llm_metadata_from_pdf.py "C:\Users\tr-mo\Zotero\storage\A2ISCMT9\
   characters, OCRmyPDF is run automatically with deskewing and page rotation. OCR
   requires the local OCRmyPDF and Tesseract installation.
 - Only the first PDF attachment for an item is considered.
+- Full-document fallback summarization is skipped above an estimated 24,000 tokens
+  (about 40 scientific-paper pages). The estimate uses two extracted characters per
+  token, so it errs on the side of skipping long documents such as books. Strict
+  front-matter metadata extraction still runs for these files. The unified pipeline can
+  override this with `--max-paper-tokens`.
 - The LLM result is useful metadata, not verified bibliographic truth; inspect samples
   before using it to update Zotero in a future workflow.
 - The implementation intentionally does not deduplicate Zotero records or copy metadata

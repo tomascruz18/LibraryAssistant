@@ -25,6 +25,16 @@ The `papers` table uses the Zotero item key as its primary key. It stores:
 The `sync_state` table is a small key/value store for future state such as Zotero's last
 library version or the timestamp of the last complete synchronization.
 
+The `paper_embeddings` table stores persistent vectors keyed by the same Zotero key as
+the paper. See [Persistent Embeddings](embeddings.md) for how it avoids recomputing
+unchanged vectors.
+
+The current sparse similarity graph and Leiden cluster assignments are stored by Zotero
+key as well. See [Similarity Graph and Clusters](graph.md).
+
+UMAP coordinates are stored as a rebuildable visualization cache, also by Zotero key.
+See [UMAP Paper Map](visualization.md).
+
 ## Change detection
 
 The catalog stores these change signals:
@@ -51,6 +61,15 @@ saved_count = save_papers(papers)
 stored_papers = load_papers()
 print(saved_count, len(stored_papers))
 ```
+
+For a visible terminal progress bar while saving a larger list:
+
+```python
+saved_count = save_papers(papers, show_progress=True)
+```
+
+Lists show `current/total`; generators show the number saved so far. The option is
+disabled by default and adds no package dependency.
 
 Read one paper by Zotero key:
 

@@ -22,6 +22,7 @@ if hasattr(sys.stdout, "reconfigure"):
 from extraction import pdf_to_text
 from llm import (
     DEFAULT_MODEL,
+    MAX_SUMMARIZATION_TOKENS,
     MetadataExtractionError,
     extract_metadata_with_retries,
     summarize_document_text,
@@ -68,6 +69,12 @@ def main() -> None:
         type=Path,
         help="Save the unparsed Ollama metadata response for debugging",
     )
+    parser.add_argument(
+        "--max-paper-tokens",
+        type=int,
+        default=MAX_SUMMARIZATION_TOKENS,
+        help="Maximum estimated tokens allowed for full-document summarization",
+    )
     arguments = parser.parse_args()
 
     if arguments.raw_output and arguments.mode == "summarize":
@@ -81,6 +88,7 @@ def main() -> None:
             "abstract": summarize_document_text(
                 document_text,
                 model=arguments.model,
+                max_document_tokens=arguments.max_paper_tokens,
             ),
             "abstract_source": "llm_summary",
             "document_type": "forced_summary",
@@ -119,6 +127,7 @@ def main() -> None:
         metadata["abstract"] = summarize_document_text(
             document_text,
             model=arguments.model,
+            max_document_tokens=arguments.max_paper_tokens,
         )
         metadata["abstract_source"] = "llm_summary"
 

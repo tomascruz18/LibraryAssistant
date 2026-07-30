@@ -9,13 +9,14 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+import sys
 from typing import Any, Iterable
 
 from llm import METADATA_PIPELINE_VERSION
 
 
 DEFAULT_DATABASE_PATH = Path("data/library.sqlite3")
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 8
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,87 @@ def _initialize_schema(connection: sqlite3.Connection) -> None:
             value TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS paper_embeddings (
+            zotero_key TEXT PRIMARY KEY
+                REFERENCES papers(zotero_key) ON DELETE CASCADE,
+            embedding_model TEXT NOT NULL,
+            input_hash TEXT NOT NULL,
+            dimensions INTEGER NOT NULL,
+            vector BLOB NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_paper_embeddings_model
+            ON paper_embeddings(embedding_model);
+
+        CREATE TABLE IF NOT EXISTS paper_similarity_edges (
+            embedding_model TEXT NOT NULL,
+            source_key TEXT NOT NULL REFERENCES papers(zotero_key) ON DELETE CASCADE,
+            target_key TEXT NOT NULL REFERENCES papers(zotero_key) ON DELETE CASCADE,
+            similarity REAL NOT NULL,
+            PRIMARY KEY (embedding_model, source_key, target_key),
+            CHECK (source_key < target_key)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_similarity_edges_source
+            ON paper_similarity_edges(embedding_model, source_key);
+        CREATE INDEX IF NOT EXISTS idx_similarity_edges_target
+            ON paper_similarity_edges(embedding_model, target_key);
+
+        CREATE TABLE IF NOT EXISTS paper_clusters (
+            embedding_model TEXT NOT NULL,
+            zotero_key TEXT NOT NULL REFERENCES papers(zotero_key) ON DELETE CASCADE,
+            cluster_id INTEGER NOT NULL,
+            PRIMARY KEY (embedding_model, zotero_key)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_paper_clusters_cluster
+            ON paper_clusters(embedding_model, cluster_id);
+
+        CREATE TABLE IF NOT EXISTS similarity_graph_state (
+            embedding_model TEXT PRIMARY KEY,
+            input_fingerprint TEXT NOT NULL,
+            neighbors INTEGER NOT NULL,
+            similarity_percentile REAL NOT NULL,
+            similarity_threshold REAL,
+            built_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS paper_projections (
+            embedding_model TEXT NOT NULL,
+            zotero_key TEXT NOT NULL REFERENCES papers(zotero_key) ON DELETE CASCADE,
+            x REAL NOT NULL,
+            y REAL NOT NULL,
+            PRIMARY KEY (embedding_model, zotero_key)
+        );
+
+        CREATE TABLE IF NOT EXISTS projection_state (
+            embedding_model TEXT PRIMARY KEY,
+            input_fingerprint TEXT NOT NULL,
+            neighbors INTEGER NOT NULL,
+            min_dist REAL NOT NULL,
+            random_state INTEGER NOT NULL,
+            built_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS cluster_labels (
+            embedding_model TEXT NOT NULL,
+            graph_fingerprint TEXT NOT NULL,
+            cluster_id INTEGER NOT NULL,
+            label TEXT NOT NULL,
+            description TEXT NOT NULL,
+            source TEXT NOT NULL CHECK (source IN ('llm', 'title', 'manual')),
+            llm_model TEXT,
+            label_pipeline_version INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (embedding_model, graph_fingerprint, cluster_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cluster_labels_current
+            ON cluster_labels(embedding_model, graph_fingerprint, cluster_id);
         """
     )
     if current_version == 1:
@@ -258,15 +340,46 @@ def upsert_paper(
 def save_papers(
     papers: Iterable[dict[str, Any]],
     path: str | Path = DEFAULT_DATABASE_PATH,
+    *,
+    show_progress: bool = False,
 ) -> int:
-    """Save processed records in one transaction and return the number stored."""
+    """Save records in one transaction, optionally showing terminal progress."""
+    total = _iterable_length(papers) if show_progress else None
     count = 0
+    if show_progress:
+        _render_save_progress(count, total)
     with closing(connect_database(path)) as connection:
         with connection:
             for paper in papers:
                 upsert_paper(connection, paper)
                 count += 1
+                if show_progress:
+                    _render_save_progress(count, total)
+    if show_progress:
+        print(file=sys.stdout)
     return count
+
+
+def _iterable_length(items: Iterable[Any]) -> int | None:
+    """Return a known iterable length without consuming generators."""
+    try:
+        return len(items)  # type: ignore[arg-type]
+    except TypeError:
+        return None
+
+
+def _render_save_progress(completed: int, total: int | None) -> None:
+    """Render one lightweight, dependency-free terminal progress bar."""
+    if total is None:
+        message = f"Saving papers: {completed}"
+    elif total == 0:
+        message = "Saving papers: 0/0"
+    else:
+        width = 24
+        filled = round(width * completed / total)
+        bar = "#" * filled + "-" * (width - filled)
+        message = f"Saving papers: [{bar}] {completed}/{total}"
+    print(f"\r{message}", end="", file=sys.stdout, flush=True)
 
 
 def _decode_paper(row: sqlite3.Row) -> dict[str, Any]:

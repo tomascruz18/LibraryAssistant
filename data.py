@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 import tempfile
 from typing import Any
 
@@ -13,6 +14,7 @@ from llm import (
     DEFAULT_CONTEXT_WINDOW_TOKENS,
     DEFAULT_MODEL,
     DEFAULT_TIMEOUT_SECONDS,
+    MAX_SUMMARIZATION_TOKENS,
     METADATA_PIPELINE_VERSION,
     extract_metadata_with_retries,
     summarize_document_text,
@@ -37,6 +39,28 @@ def _missing_metadata_fields(paper: dict[str, Any]) -> set[str]:
         for field in ("authors", "date", "abstract")
         if not paper.get(field)
     }
+
+
+def _iterable_length(items: Any) -> int | None:
+    """Return an iterable length without consuming a generator."""
+    try:
+        return len(items)
+    except TypeError:
+        return None
+
+
+def _render_load_progress(completed: int, total: int | None) -> None:
+    """Render one dependency-free terminal progress bar for Zotero processing."""
+    if total is None:
+        message = f"Loading Zotero entries: {completed}"
+    elif total == 0:
+        message = "Loading Zotero entries: 0/0"
+    else:
+        width = 24
+        filled = round(width * completed / total)
+        bar = "#" * filled + "-" * (width - filled)
+        message = f"Loading Zotero entries: [{bar}] {completed}/{total}"
+    print(f"\r{message}", end="", file=sys.stdout, flush=True)
 
 
 def _pdf_attachment(client: zotero.Zotero, item_key: str) -> dict[str, Any] | None:
@@ -83,6 +107,7 @@ def _enrich_missing_metadata(
     max_characters: int,
     timeout_seconds: float,
     context_window_tokens: int,
+    max_summary_tokens: int,
 ) -> None:
     """Fill only absent metadata values on an in-memory paper record."""
     missing_fields = _missing_metadata_fields(paper)
@@ -136,6 +161,7 @@ def _enrich_missing_metadata(
                 model=model,
                 timeout_seconds=timeout_seconds,
                 context_window_tokens=context_window_tokens,
+                max_document_tokens=max_summary_tokens,
             )
             paper["metadata_source"]["abstract"] = "llm_summary"
         except Exception as error:
@@ -155,7 +181,9 @@ def load_zotero_library(
     max_metadata_characters: int = 12_000,
     llm_timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     llm_context_window_tokens: int = DEFAULT_CONTEXT_WINDOW_TOKENS,
+    max_summary_tokens: int = MAX_SUMMARIZATION_TOKENS,
     include_unsupported_documents: bool = False,
+    show_progress: bool = False,
 ) -> list[dict[str, Any]]:
     """Return normalized paper records from Zotero.
 
@@ -167,7 +195,8 @@ def load_zotero_library(
     full document in context-safe chunks. Presentations, lectures, and other
     non-paper documents detected during LLM extraction are excluded by default. Set
     ``include_unsupported_documents=True`` to inspect them. Zotero is never modified;
-    enrichment exists only in the returned records.
+    enrichment exists only in the returned records. Set ``show_progress=True`` to show
+    progress while each Zotero entry is processed.
     """
     client = zotero.Zotero(
         library_id=library_id,
@@ -183,59 +212,67 @@ def load_zotero_library(
     )
     papers: list[dict[str, Any]] = []
 
-    for item in items:
-        item_data = item.get("data", {})
-        if item_data.get("itemType") in {"attachment", "note", "annotation"}:
-            continue
+    total_items = _iterable_length(items) if show_progress else None
+    processed_items = 0
+    if show_progress:
+        _render_load_progress(processed_items, total_items)
+    try:
+        for item in items:
+            item_data = item.get("data", {})
+            if item_data.get("itemType") not in {"attachment", "note", "annotation"}:
+                creators = [
+                    name
+                    for creator in item_data.get("creators", [])
+                    if (name := _creator_name(creator))
+                ]
+                paper = {
+                    "id": item.get("key") or item_data.get("key"),
+                    "zotero_version": item.get("version") or item_data.get("version") or 0,
+                    "title": str(item_data.get("title", "")).strip(),
+                    "abstract": str(item_data.get("abstractNote", "")).strip(),
+                    "date": str(item_data.get("date", "")).strip(),
+                    "authors": creators,
+                    "item_type": item_data.get("itemType", ""),
+                    "doi": str(item_data.get("DOI", "")).strip(),
+                    "url": str(item_data.get("url", "")).strip(),
+                    "metadata_source": {
+                        "authors": "zotero" if creators else None,
+                        "date": "zotero" if item_data.get("date", "").strip() else None,
+                        "abstract": "zotero" if item_data.get("abstractNote", "").strip() else None,
+                    },
+                    "zotero_metadata": {
+                        "authors": creators,
+                        "date": str(item_data.get("date", "")).strip(),
+                        "abstract": str(item_data.get("abstractNote", "")).strip(),
+                    },
+                    "metadata_pipeline_version": METADATA_PIPELINE_VERSION,
+                    "llm_model": llm_model,
+                    "llm_context_window_tokens": llm_context_window_tokens,
+                    "document_type": "unknown",
+                    "is_supported": True,
+                }
+                if enrich_missing_metadata:
+                    _enrich_missing_metadata(
+                        client,
+                        paper,
+                        model=llm_model,
+                        max_characters=max_metadata_characters,
+                        timeout_seconds=llm_timeout_seconds,
+                        context_window_tokens=llm_context_window_tokens,
+                        max_summary_tokens=max_summary_tokens,
+                    )
+                if paper["is_supported"] and (
+                    not require_abstract or paper["abstract"]
+                ):
+                    papers.append(paper)
 
-        creators = [
-            name
-            for creator in item_data.get("creators", [])
-            if (name := _creator_name(creator))
-        ]
-        paper = {
-            "id": item.get("key") or item_data.get("key"),
-            "zotero_version": item.get("version") or item_data.get("version") or 0,
-            "title": str(item_data.get("title", "")).strip(),
-            "abstract": str(item_data.get("abstractNote", "")).strip(),
-            "date": str(item_data.get("date", "")).strip(),
-            "authors": creators,
-            "item_type": item_data.get("itemType", ""),
-            "doi": str(item_data.get("DOI", "")).strip(),
-            "url": str(item_data.get("url", "")).strip(),
-            "metadata_source": {
-                "authors": "zotero" if creators else None,
-                "date": "zotero" if item_data.get("date", "").strip() else None,
-                "abstract": "zotero" if item_data.get("abstractNote", "").strip() else None,
-            },
-            "zotero_metadata": {
-                "authors": creators,
-                "date": str(item_data.get("date", "")).strip(),
-                "abstract": str(item_data.get("abstractNote", "")).strip(),
-            },
-            "metadata_pipeline_version": METADATA_PIPELINE_VERSION,
-            "llm_model": llm_model,
-            "llm_context_window_tokens": llm_context_window_tokens,
-            "document_type": "unknown",
-            "is_supported": True,
-        }
-        if enrich_missing_metadata:
-            _enrich_missing_metadata(
-                client,
-                paper,
-                model=llm_model,
-                max_characters=max_metadata_characters,
-                timeout_seconds=llm_timeout_seconds,
-                context_window_tokens=llm_context_window_tokens,
-            )
-        if not paper["is_supported"] and not include_unsupported_documents:
-            continue
-        if require_abstract and not paper["abstract"]:
-            continue
-
-        papers.append(paper)
-
-        if limit is not None and len(papers) >= limit:
-            break
+            processed_items += 1
+            if show_progress:
+                _render_load_progress(processed_items, total_items)
+            if limit is not None and len(papers) >= limit:
+                break
+    finally:
+        if show_progress:
+            print(file=sys.stdout)
 
     return papers

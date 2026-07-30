@@ -152,14 +152,24 @@ pip install -r requirements.txt
 
 ## Run the MVP
 
+Generate the complete stored library, embeddings, graph, clusters, UMAP, and HTML views:
+
+```bash
+python scripts/build_all.py --papers 1000
+```
+
+See [End-to-end pipeline](docs/pipeline.md) for incremental, database-only, and full
+rebuild options.
+
 Start Zotero with its local API enabled, then launch the application:
 
 ```bash
 streamlit run app.py
 ```
 
-Use **Load Zotero and build index** in the sidebar. The MVP indexes paper titles and
-abstracts in memory, so the index is rebuilt when the application process restarts.
+Use **Load Zotero and build index** in the sidebar. The Streamlit prototype still builds
+an in-memory index; for persistent, incremental metadata embeddings see
+[Persistent embeddings](docs/embeddings.md).
 
 ### Test LLM metadata extraction from one PDF
 
@@ -312,3 +322,9 @@ short docstrings for their current APIs.
 - [LLM metadata extraction and summarization](docs/llm.md)
 - [Paper data model](docs/data.md)
 - [SQLite storage and database inspection](docs/storage.md)
+- [Persistent embeddings](docs/embeddings.md)
+- [Similarity graph and Leiden clusters](docs/graph.md)
+- [Cluster naming](docs/cluster_labels.md)
+- [UMAP paper-map visualization](docs/visualization.md)
+- [Querying the stored library](docs/querying.md)
+- [End-to-end pipeline](docs/pipeline.md)
