@@ -3,6 +3,12 @@ A local AI-powered literature assistant for exploring, searching and reasoning o
 
 The project combines semantic search, keyword search, graph analysis and local large language models to create an interactive research environment.
 
+> [!IMPORTANT]
+> **Project status:** this repository is an early MVP. Reusable building blocks follow
+> the flat module structure below, while the original exploratory code is preserved in
+> `scripts/`. A more elaborate possible design is documented separately in
+> [Future Architecture and Roadmap](docs/FUTURE_ARCHITECTURE_AND_ROADMAP.md).
+
 ## Features
 
 - Import papers directly from a local Zotero library.
@@ -144,6 +150,19 @@ pip install -r requirements.txt
 
 ---
 
+## Run the MVP
+
+Start Zotero with its local API enabled, then launch the application:
+
+```bash
+streamlit run app.py
+```
+
+Use **Load Zotero and build index** in the sidebar. The MVP indexes paper titles and
+abstracts in memory, so the index is rebuilt when the application process restarts.
+
+---
+
 ## Required Software
 
 - Zotero
@@ -185,7 +204,9 @@ LibraryAssistant/
 ├── visualization.py        # UMAP / Plotly
 ├── llm.py                  # Ollama interface
 │
-├── data/
+├── data/                   # Generated local MVP data
+├── scripts/                # Original standalone experiments
+├── docs/
 │
 ├── requirements.txt
 └── README.md
@@ -197,16 +218,18 @@ LibraryAssistant/
 
 ### Retrieval
 
-- [x] Semantic search
-- [x] BM25
-- [ ] Hybrid reranking
+- [x] Semantic search MVP
+- [x] BM25 search MVP
+- [x] Hybrid score fusion MVP
+- [ ] Persistent indexes
+- [ ] Reranking
 - [ ] Citation graph
 - [ ] Metadata filters
 
 ### Visualization
 
-- [x] UMAP
-- [x] Leiden clustering
+- [x] UMAP prototype
+- [x] Leiden clustering prototype
 - [ ] Interactive Plotly graph
 - [ ] Cluster inspection
 - [ ] Citation visualization
@@ -223,7 +246,7 @@ LibraryAssistant/
 
 ### User Interface
 
-- [ ] Streamlit application
+- [x] Minimal Streamlit search application
 - [ ] PDF viewer
 - [ ] Open paper from Zotero
 - [ ] Search history
@@ -252,4 +275,5 @@ The tool shall be modular.
 
 ## Documentation
 
-Each module has a readme file to explain the usage and background knowledge.
+Longer design notes and future plans live in [`docs/`](docs/). The root modules contain
+short docstrings for their current APIs.

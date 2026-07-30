@@ -1,5 +1,9 @@
 # LibraryAssistant Architecture and Roadmap
 
+> This document captures a possible future architecture. The initial prototype files
+> discussed in the audit have since been moved unchanged to `scripts/`, and the project
+> currently follows the simpler flat MVP structure in the main README.
+
 ## 1. Executive summary
 
 LibraryAssistant is currently an exploratory prototype. The experiments demonstrate that
@@ -17,13 +21,13 @@ LLM answers should be built only after that foundation is measurable and repeata
 
 ### What is already useful
 
-- `zotero_library.py` proves local Zotero API access and basic metadata retrieval.
-- `advanced_text_extraction.py` proves native PDF extraction with an OCR fallback.
-- `embedding_example.py` proves BGE-M3 embedding and cosine-similarity calls.
-- `graph_example.py` is a useful end-to-end research spike covering paper-level
+- `scripts/zotero_library.py` proves local Zotero API access and basic metadata retrieval.
+- `scripts/advanced_text_extraction.py` proves native PDF extraction with an OCR fallback.
+- `scripts/embedding_example.py` proves BGE-M3 embedding and cosine-similarity calls.
+- `scripts/graph_example.py` is a useful end-to-end research spike covering paper-level
   embeddings, BM25, hybrid scoring, nearest neighbours, a k-nearest-neighbour graph,
   Leiden clustering, UMAP, and two plotting approaches.
-- `app.py` proves the Streamlit entry point can remain very small.
+- `scripts/app.py` proves the Streamlit entry point can remain very small.
 - The README gives a coherent product direction and correctly emphasizes local-first,
   modular operation.
 
