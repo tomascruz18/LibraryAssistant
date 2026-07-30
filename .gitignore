@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+
+# Local library metadata and generated artifacts
+data/*
+!data/.gitkeep
+
+# SQLite runtime files if a database is configured outside data/
+*.sqlite3-wal
+*.sqlite3-shm

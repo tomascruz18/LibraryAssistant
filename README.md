@@ -161,6 +161,25 @@ streamlit run app.py
 Use **Load Zotero and build index** in the sidebar. The MVP indexes paper titles and
 abstracts in memory, so the index is rebuilt when the application process restarts.
 
+### Test LLM metadata extraction from one PDF
+
+With Ollama running and `qwen3:8b` installed, run:
+
+```bash
+python scripts/llm_metadata_from_pdf.py "path/to/paper.pdf" --mode auto
+```
+
+The script reads the beginning of the PDF, then prints JSON with `authors`, `date`, and
+`abstract`. It first extracts a real abstract only when one is explicitly present. If
+there is none, it generates an abstract-style summary from the complete document.
+Long documents are summarized in context-safe chunks and recursively condensed using the
+8k context configuration. Pass `--output data/metadata.json` to save the result. For
+scanned PDFs, run OCR first; this small experiment currently uses only the PDF's
+embedded text.
+
+To compare the two LLM operations on the same PDF, use `--mode extract` for strict
+front-matter extraction and `--mode summarize` to force a full-document summary.
+
 ---
 
 ## Required Software
@@ -188,6 +207,17 @@ Currently tested with
 qwen3:8b
 ```
 
+Maximum context size is 40960. After some experiments I got this:
+
+| Context |  Memory | GPU usage |
+| ------: | ------: | --------: |
+|      4k |  5.6 GB |  100% GPU |
+|      8k |  6.2 GB |  100% GPU |
+|     12k |  7.2 GB |   87% GPU |
+|     16k |  7.8 GB |   80% GPU |
+|     30k | 10.0 GB |   62% GPU |
+
+
 ---
 
 ## Repository Structure
@@ -197,6 +227,7 @@ LibraryAssistant/
 
 ├── app.py                  # Streamlit application
 ├── data.py                 # Load Zotero library
+├── storage.py              # Persist metadata in SQLite
 ├── extraction.py           # PDF text extraction
 ├── embeddings.py           # Embedding generation
 ├── search.py               # Semantic + BM25 search
@@ -277,3 +308,7 @@ The tool shall be modular.
 
 Longer design notes and future plans live in [`docs/`](docs/). The root modules contain
 short docstrings for their current APIs.
+
+- [LLM metadata extraction and summarization](docs/llm.md)
+- [Paper data model](docs/data.md)
+- [SQLite storage and database inspection](docs/storage.md)

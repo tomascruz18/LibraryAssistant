@@ -6,6 +6,12 @@ zot = zotero.Zotero(
     local=True
 )
 
+items = zot.top(limit=10)
+# we've retrieved the latest five top-level items in our library
+# we can print each item's item type and ID
+for item in items:
+    print(f"Item: {item['data']['itemType']} | Key: {item['data']['key']} | Key: {item['data']['title']}")
+
 items = zot.everything(
     zot.items()
 )

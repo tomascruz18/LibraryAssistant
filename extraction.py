@@ -12,6 +12,9 @@ from uuid import uuid4
 import fitz
 
 
+DEFAULT_MINIMUM_NATIVE_CHARACTERS = 100
+
+
 @dataclass(frozen=True)
 class ExtractionResult:
     text: str
@@ -69,7 +72,7 @@ def pdf_to_text(
     *,
     method: str = "auto",
     ocr_output_dir: str | Path = "data/ocr",
-    minimum_native_characters: int = 100,
+    minimum_native_characters: int = DEFAULT_MINIMUM_NATIVE_CHARACTERS,
 ) -> ExtractionResult:
     """Extract a PDF with ``native``, ``ocr``, or automatic selection."""
     source = Path(pdf_path)
